@@ -6,61 +6,99 @@
 
 Settings globalSettings;
 
-static void populateStoredSettingsExtra(StoredSettingsExtra *storedSettingsExtra) {
-  strncpy(storedSettingsExtra->altCityLabel, globalSettings.altCityLabel,
-          ALT_CITY_LABEL_LEN);
-  storedSettingsExtra->altCityLabel[ALT_CITY_LABEL_LEN - 1] = '\0';
-  storedSettingsExtra->altCityUtcOffset = globalSettings.altCityUtcOffset;
-  strncpy(storedSettingsExtra->altCity2Label, globalSettings.altCity2Label,
-          ALT_CITY_LABEL_LEN);
-  storedSettingsExtra->altCity2Label[ALT_CITY_LABEL_LEN - 1] = '\0';
-  storedSettingsExtra->altCity2UtcOffset = globalSettings.altCity2UtcOffset;
-  storedSettingsExtra->localUtcOffset = globalSettings.localUtcOffset;
-  storedSettingsExtra->usePrimaryFontForAllWidgets =
-      globalSettings.usePrimaryFontForAllWidgets;
-  strncpy(storedSettingsExtra->infoLayout, globalSettings.infoLayout,
-          INFO_LAYOUT_LEN);
-  storedSettingsExtra->infoLayout[INFO_LAYOUT_LEN - 1] = '\0';
-  storedSettingsExtra->timeFormat = globalSettings.timeFormat;
+// ---------------------------------------------------------------------------
+// Per-field persist keys. Each setting owns its own key, so adding or removing
+// a field never disturbs the others. Numbered from 100 to stay clear of the
+// solar data key (51).
+// ---------------------------------------------------------------------------
+enum {
+  PK_TIME_COLOR = 100,
+  PK_SUBTEXT_PRIMARY_COLOR,
+  PK_SUBTEXT_SECONDARY_COLOR,
+  PK_BG_COLOR,
+  PK_NIGHT_TIME_COLOR,
+  PK_NIGHT_SUBTEXT_PRIMARY_COLOR,
+  PK_NIGHT_SUBTEXT_SECONDARY_COLOR,
+  PK_NIGHT_BG_COLOR,
+  PK_USE_NIGHT_THEME,
+  PK_USE_LARGE_FONTS,
+  PK_SHOW_LEADING_ZERO,
+  PK_USE_PRIMARY_FONT,
+  PK_TEMP_UNIT,
+  PK_LANGUAGE,
+  PK_TIME_FORMAT,
+  PK_ALT_CITY_LABEL,
+  PK_ALT_CITY_UTC_OFFSET,
+  PK_ALT_CITY2_LABEL,
+  PK_ALT_CITY2_UTC_OFFSET,
+  PK_INFO_LAYOUT,
+  PK_WIDGET_UPPER_SECONDARY,
+  PK_WIDGET_UPPER_PRIMARY,
+  PK_WIDGET_LOWER_PRIMARY,
+  PK_WIDGET_LOWER_SECONDARY,
+};
+
+// ---------------------------------------------------------------------------
+// Small persist helpers
+// ---------------------------------------------------------------------------
+static void persist_put_color(uint32_t key, GColor c) {
+  persist_write_data(key, &c, sizeof(GColor));
 }
 
-void Settings_init() { Settings_loadFromStorage(); }
+static GColor persist_get_color(uint32_t key, GColor def) {
+  GColor c = def;
+  if (persist_exists(key)) {
+    persist_read_data(key, &c, sizeof(GColor));
+  }
+  return c;
+}
 
-void Settings_deinit() { Settings_saveToStorage(); }
+static int persist_get_int(uint32_t key, int def) {
+  return persist_exists(key) ? persist_read_int(key) : def;
+}
 
-void Settings_loadFromStorage() {
-  // set all the defaults!
-  // text colors
+static bool persist_get_bool(uint32_t key, bool def) {
+  return persist_exists(key) ? persist_read_bool(key) : def;
+}
+
+// Overwrite buf only if the key exists; otherwise leave the caller's default.
+static void persist_load_str(uint32_t key, char *buf, size_t buf_len) {
+  if (persist_exists(key)) {
+    persist_read_string(key, buf, buf_len);
+    buf[buf_len - 1] = '\0';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Defaults / load / save
+// ---------------------------------------------------------------------------
+static void set_defaults(void) {
+  memset(&globalSettings, 0, sizeof(globalSettings));
+
   globalSettings.timeColor = DEFAULT_TIME_COLOR;
   globalSettings.subtextPrimaryColor = DEFAULT_SUBTEXT_PRIMARY_COLOR;
   globalSettings.subtextSecondaryColor = DEFAULT_SUBTEXT_SECONDARY_COLOR;
-
-  // decoration colors
   globalSettings.bgColor = DEFAULT_BG_COLOR;
 
-  // night theme colors
   globalSettings.nightTimeColor = DEFAULT_NIGHT_TIME_COLOR;
   globalSettings.nightSubtextPrimaryColor = DEFAULT_NIGHT_SUBTEXT_PRIMARY_COLOR;
   globalSettings.nightSubtextSecondaryColor =
       DEFAULT_NIGHT_SUBTEXT_SECONDARY_COLOR;
   globalSettings.nightBgColor = DEFAULT_NIGHT_BG_COLOR;
 
-  // various appearance settings
   globalSettings.useNightTheme = true;
   globalSettings.useLargeFonts = false;
   globalSettings.showLeadingZero = false;
+  globalSettings.usePrimaryFontForAllWidgets = false;
   globalSettings.tempUnit = TEMP_UNIT_CELSIUS;
   globalSettings.language = 0;
   globalSettings.timeFormat = TIME_FORMAT_SYSTEM;
 
-  // widget slot defaults
-  // Weather-dependent slots use placeholders until JS sends real data.
-  // This prevents raw tokens like "{temp}°" from flashing on first run.
+  // Weather-dependent slots use placeholders until JS sends real data, so raw
+  // tokens like "{temp}°" don't flash on first run.
   strncpy(globalSettings.widgetUpperSecondary, "--° (--° / --°)",
           WIDGET_TEXT_LEN);
   strncpy(globalSettings.widgetUpperPrimary, "--", WIDGET_TEXT_LEN);
-  // Lower-primary defaults to the {local_date} super-token; widgets.c expands
-  // it at render time using the active language's idiomatic format.
   strncpy(globalSettings.widgetLowerPrimary, "{local_date}", WIDGET_TEXT_LEN);
 #if defined(PBL_HEALTH)
   strncpy(globalSettings.widgetLowerSecondary, "{steps} {t:STEPS}",
@@ -69,60 +107,79 @@ void Settings_loadFromStorage() {
   strncpy(globalSettings.widgetLowerSecondary, "{t:BATTERY} {batt}%",
           WIDGET_TEXT_LEN);
 #endif
+
   strncpy(globalSettings.altCityLabel, "TYO", ALT_CITY_LABEL_LEN);
-  globalSettings.altCityLabel[ALT_CITY_LABEL_LEN - 1] = '\0';
   globalSettings.altCityUtcOffset = 540;
   strncpy(globalSettings.altCity2Label, "UTC", ALT_CITY_LABEL_LEN);
-  globalSettings.altCity2Label[ALT_CITY_LABEL_LEN - 1] = '\0';
   globalSettings.altCity2UtcOffset = 0;
   globalSettings.localUtcOffset = 0;
-  globalSettings.usePrimaryFontForAllWidgets = false;
+
   strncpy(globalSettings.infoLayout, DEFAULT_INFO_LAYOUT, INFO_LAYOUT_LEN);
-  globalSettings.infoLayout[INFO_LAYOUT_LEN - 1] = '\0';
+}
 
-  if (persist_exists(SETTINGS_PERSIST_KEY)) {
-    const int stored_size = persist_get_size(SETTINGS_PERSIST_KEY);
-    if (stored_size > 0) {
-      // Settings storage is append-only: defaults above cover fields that did
-      // not exist in older persisted blobs.
-      const int read_size = stored_size < (int)sizeof(StoredSettings)
-                                ? stored_size
-                                : (int)sizeof(StoredSettings);
-      persist_read_data(SETTINGS_PERSIST_KEY, &globalSettings, read_size);
-    }
-  }
+static void load_from_keys(void) {
+  globalSettings.timeColor =
+      persist_get_color(PK_TIME_COLOR, globalSettings.timeColor);
+  globalSettings.subtextPrimaryColor =
+      persist_get_color(PK_SUBTEXT_PRIMARY_COLOR, globalSettings.subtextPrimaryColor);
+  globalSettings.subtextSecondaryColor = persist_get_color(
+      PK_SUBTEXT_SECONDARY_COLOR, globalSettings.subtextSecondaryColor);
+  globalSettings.bgColor = persist_get_color(PK_BG_COLOR, globalSettings.bgColor);
 
-  if (persist_exists(SETTINGS_EXTRA_PERSIST_KEY)) {
-    const int stored_size = persist_get_size(SETTINGS_EXTRA_PERSIST_KEY);
-    if (stored_size > 0) {
-      StoredSettingsExtra storedSettingsExtra;
-      memset(&storedSettingsExtra, 0, sizeof(StoredSettingsExtra));
-      populateStoredSettingsExtra(&storedSettingsExtra);
-      const int read_size = stored_size < (int)sizeof(StoredSettingsExtra)
-                                ? stored_size
-                                : (int)sizeof(StoredSettingsExtra);
-      persist_read_data(SETTINGS_EXTRA_PERSIST_KEY, &storedSettingsExtra,
-                        read_size);
+  globalSettings.nightTimeColor =
+      persist_get_color(PK_NIGHT_TIME_COLOR, globalSettings.nightTimeColor);
+  globalSettings.nightSubtextPrimaryColor = persist_get_color(
+      PK_NIGHT_SUBTEXT_PRIMARY_COLOR, globalSettings.nightSubtextPrimaryColor);
+  globalSettings.nightSubtextSecondaryColor = persist_get_color(
+      PK_NIGHT_SUBTEXT_SECONDARY_COLOR, globalSettings.nightSubtextSecondaryColor);
+  globalSettings.nightBgColor =
+      persist_get_color(PK_NIGHT_BG_COLOR, globalSettings.nightBgColor);
 
-      strncpy(globalSettings.altCityLabel, storedSettingsExtra.altCityLabel,
-              ALT_CITY_LABEL_LEN);
-      globalSettings.altCityLabel[ALT_CITY_LABEL_LEN - 1] = '\0';
-      globalSettings.altCityUtcOffset = storedSettingsExtra.altCityUtcOffset;
-      strncpy(globalSettings.altCity2Label, storedSettingsExtra.altCity2Label,
-              ALT_CITY_LABEL_LEN);
-      globalSettings.altCity2Label[ALT_CITY_LABEL_LEN - 1] = '\0';
-      globalSettings.altCity2UtcOffset = storedSettingsExtra.altCity2UtcOffset;
-      globalSettings.localUtcOffset = storedSettingsExtra.localUtcOffset;
-      globalSettings.usePrimaryFontForAllWidgets =
-          storedSettingsExtra.usePrimaryFontForAllWidgets;
-      strncpy(globalSettings.infoLayout, storedSettingsExtra.infoLayout,
-              INFO_LAYOUT_LEN);
-      globalSettings.infoLayout[INFO_LAYOUT_LEN - 1] = '\0';
-      globalSettings.timeFormat = storedSettingsExtra.timeFormat;
-    }
-  }
+  globalSettings.useNightTheme =
+      persist_get_bool(PK_USE_NIGHT_THEME, globalSettings.useNightTheme);
+  globalSettings.useLargeFonts =
+      persist_get_bool(PK_USE_LARGE_FONTS, globalSettings.useLargeFonts);
+  globalSettings.showLeadingZero =
+      persist_get_bool(PK_SHOW_LEADING_ZERO, globalSettings.showLeadingZero);
+  globalSettings.usePrimaryFontForAllWidgets = persist_get_bool(
+      PK_USE_PRIMARY_FONT, globalSettings.usePrimaryFontForAllWidgets);
 
-  // Guard against an empty/corrupt persisted info layout.
+  globalSettings.tempUnit =
+      (TempUnitType)persist_get_int(PK_TEMP_UNIT, globalSettings.tempUnit);
+  globalSettings.language =
+      (uint8_t)persist_get_int(PK_LANGUAGE, globalSettings.language);
+  globalSettings.timeFormat =
+      (uint8_t)persist_get_int(PK_TIME_FORMAT, globalSettings.timeFormat);
+
+  globalSettings.altCityUtcOffset = (int16_t)persist_get_int(
+      PK_ALT_CITY_UTC_OFFSET, globalSettings.altCityUtcOffset);
+  globalSettings.altCity2UtcOffset = (int16_t)persist_get_int(
+      PK_ALT_CITY2_UTC_OFFSET, globalSettings.altCity2UtcOffset);
+
+  persist_load_str(PK_ALT_CITY_LABEL, globalSettings.altCityLabel,
+                   ALT_CITY_LABEL_LEN);
+  persist_load_str(PK_ALT_CITY2_LABEL, globalSettings.altCity2Label,
+                   ALT_CITY_LABEL_LEN);
+  persist_load_str(PK_INFO_LAYOUT, globalSettings.infoLayout, INFO_LAYOUT_LEN);
+  persist_load_str(PK_WIDGET_UPPER_SECONDARY,
+                   globalSettings.widgetUpperSecondary, WIDGET_TEXT_LEN);
+  persist_load_str(PK_WIDGET_UPPER_PRIMARY, globalSettings.widgetUpperPrimary,
+                   WIDGET_TEXT_LEN);
+  persist_load_str(PK_WIDGET_LOWER_PRIMARY, globalSettings.widgetLowerPrimary,
+                   WIDGET_TEXT_LEN);
+  persist_load_str(PK_WIDGET_LOWER_SECONDARY,
+                   globalSettings.widgetLowerSecondary, WIDGET_TEXT_LEN);
+}
+
+void Settings_init() { Settings_loadFromStorage(); }
+
+void Settings_deinit() { Settings_saveToStorage(); }
+
+void Settings_loadFromStorage() {
+  set_defaults();
+  load_from_keys();  // each key is optional; missing keys keep their default
+
+  // Guard against an empty/corrupt info layout.
   if (globalSettings.infoLayout[0] == '\0') {
     strncpy(globalSettings.infoLayout, DEFAULT_INFO_LAYOUT, INFO_LAYOUT_LEN);
     globalSettings.infoLayout[INFO_LAYOUT_LEN - 1] = '\0';
@@ -133,16 +190,42 @@ void Settings_loadFromStorage() {
 
 void Settings_saveToStorage() {
   Settings_updateDynamicSettings();
-  StoredSettings storedSettings;
-  memcpy(&storedSettings, &globalSettings, sizeof(StoredSettings));
-  persist_write_data(SETTINGS_PERSIST_KEY, &storedSettings,
-                     sizeof(StoredSettings));
 
-  StoredSettingsExtra storedSettingsExtra;
-  memset(&storedSettingsExtra, 0, sizeof(StoredSettingsExtra));
-  populateStoredSettingsExtra(&storedSettingsExtra);
-  persist_write_data(SETTINGS_EXTRA_PERSIST_KEY, &storedSettingsExtra,
-                     sizeof(StoredSettingsExtra));
+  persist_put_color(PK_TIME_COLOR, globalSettings.timeColor);
+  persist_put_color(PK_SUBTEXT_PRIMARY_COLOR, globalSettings.subtextPrimaryColor);
+  persist_put_color(PK_SUBTEXT_SECONDARY_COLOR,
+                    globalSettings.subtextSecondaryColor);
+  persist_put_color(PK_BG_COLOR, globalSettings.bgColor);
+  persist_put_color(PK_NIGHT_TIME_COLOR, globalSettings.nightTimeColor);
+  persist_put_color(PK_NIGHT_SUBTEXT_PRIMARY_COLOR,
+                    globalSettings.nightSubtextPrimaryColor);
+  persist_put_color(PK_NIGHT_SUBTEXT_SECONDARY_COLOR,
+                    globalSettings.nightSubtextSecondaryColor);
+  persist_put_color(PK_NIGHT_BG_COLOR, globalSettings.nightBgColor);
+
+  persist_write_bool(PK_USE_NIGHT_THEME, globalSettings.useNightTheme);
+  persist_write_bool(PK_USE_LARGE_FONTS, globalSettings.useLargeFonts);
+  persist_write_bool(PK_SHOW_LEADING_ZERO, globalSettings.showLeadingZero);
+  persist_write_bool(PK_USE_PRIMARY_FONT,
+                     globalSettings.usePrimaryFontForAllWidgets);
+
+  persist_write_int(PK_TEMP_UNIT, globalSettings.tempUnit);
+  persist_write_int(PK_LANGUAGE, globalSettings.language);
+  persist_write_int(PK_TIME_FORMAT, globalSettings.timeFormat);
+  persist_write_int(PK_ALT_CITY_UTC_OFFSET, globalSettings.altCityUtcOffset);
+  persist_write_int(PK_ALT_CITY2_UTC_OFFSET, globalSettings.altCity2UtcOffset);
+
+  persist_write_string(PK_ALT_CITY_LABEL, globalSettings.altCityLabel);
+  persist_write_string(PK_ALT_CITY2_LABEL, globalSettings.altCity2Label);
+  persist_write_string(PK_INFO_LAYOUT, globalSettings.infoLayout);
+  persist_write_string(PK_WIDGET_UPPER_SECONDARY,
+                       globalSettings.widgetUpperSecondary);
+  persist_write_string(PK_WIDGET_UPPER_PRIMARY,
+                       globalSettings.widgetUpperPrimary);
+  persist_write_string(PK_WIDGET_LOWER_PRIMARY,
+                       globalSettings.widgetLowerPrimary);
+  persist_write_string(PK_WIDGET_LOWER_SECONDARY,
+                       globalSettings.widgetLowerSecondary);
 
   persist_write_int(SETTINGS_VERSION_PERSIST_KEY, CURRENT_SETTINGS_VERSION);
 }
@@ -192,7 +275,6 @@ bool settings_show_am_pm(void) {
 ColorTheme getCurrentColorTheme() {
   ColorTheme theme;
 
-  // Get current time in minutes since midnight
   struct tm *timeInfo = getCurrentTime();
   int currentMinutes = timeInfo->tm_hour * 60 + timeInfo->tm_min;
 

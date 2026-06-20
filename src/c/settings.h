@@ -3,10 +3,12 @@
 #include <pebble.h>
 #include <sys/syslimits.h>
 
+// Settings are persisted with one persist key per field (see settings.c), so
+// adding or removing a field never disturbs the others — no positional blob,
+// no migrations. The version key is written for forward compatibility.
 #define CURRENT_SETTINGS_VERSION 1
 #define SETTINGS_VERSION_PERSIST_KEY 1
-#define SETTINGS_PERSIST_KEY 2
-#define SETTINGS_EXTRA_PERSIST_KEY 3
+
 #define ALT_CITY_LABEL_LEN 20
 // Each info-layout entry is "id:group:size" (e.g. "2:1:1"); five entries plus
 // commas need 30 bytes, so allow a little headroom.
@@ -56,7 +58,7 @@ typedef enum {
   TIME_FORMAT_12H_AMPM = 3   // force 12-hour with AM/PM suffix on the main time
 } TimeFormatType;
 
-// Color theme struct containing just the resolved (day or night) color fields.
+// Color theme struct containing the resolved (day or night) color fields.
 typedef struct {
   GColor timeColor;
   GColor subtextPrimaryColor;
@@ -64,17 +66,13 @@ typedef struct {
   GColor bgColor;
 } ColorTheme;
 
-// NOTE: StoredSettings must remain a byte-for-byte prefix of Settings (same
-// fields, same order) — Settings_saveToStorage() memcpy's sizeof(StoredSettings)
-// bytes out of globalSettings, and load reads them straight back in. Append new
-// persisted fields to StoredSettingsExtra instead.
+// Live settings. Persistence is per-field (settings.c), so this struct's layout
+// is free to change — add or remove fields without a migration.
 typedef struct {
   // text colors
   GColor timeColor;
   GColor subtextPrimaryColor;
   GColor subtextSecondaryColor;
-
-  // decoration colors
   GColor bgColor;
 
   // night theme colors
@@ -86,8 +84,10 @@ typedef struct {
   bool useNightTheme;
   bool useLargeFonts;
   bool showLeadingZero;
+  bool usePrimaryFontForAllWidgets;
   TempUnitType tempUnit;
   uint8_t language;
+  uint8_t timeFormat;  // TimeFormatType
 
   // Widget slots (stored as format strings)
   char widgetUpperSecondary[WIDGET_TEXT_LEN];
@@ -99,58 +99,10 @@ typedef struct {
   int16_t altCityUtcOffset;
   char altCity2Label[ALT_CITY_LABEL_LEN];
   int16_t altCity2UtcOffset;
-  int16_t localUtcOffset;
-  bool usePrimaryFontForAllWidgets;
+  int16_t localUtcOffset;  // derived each load; not persisted
+
   char infoLayout[INFO_LAYOUT_LEN];
-  uint8_t timeFormat;  // TimeFormatType
 } Settings;
-
-typedef struct {
-  // text colors
-  GColor timeColor;
-  GColor subtextPrimaryColor;
-  GColor subtextSecondaryColor;
-
-  // decoration colors
-  GColor bgColor;
-
-  // night theme colors
-  GColor nightTimeColor;
-  GColor nightSubtextPrimaryColor;
-  GColor nightSubtextSecondaryColor;
-  GColor nightBgColor;
-
-  bool useNightTheme;
-  bool useLargeFonts;
-  bool showLeadingZero;
-
-  TempUnitType tempUnit;
-  uint8_t language;
-
-  // Widget slots (stored as format strings)
-  char widgetUpperSecondary[WIDGET_TEXT_LEN];
-  char widgetUpperPrimary[WIDGET_TEXT_LEN];
-  char widgetLowerPrimary[WIDGET_TEXT_LEN];
-  char widgetLowerSecondary[WIDGET_TEXT_LEN];
-} StoredSettings;
-
-// we're kinda at the limit for stored settings, so new settings get their own
-// special struct
-typedef struct {
-  char altCityLabel[ALT_CITY_LABEL_LEN];
-  int16_t altCityUtcOffset;
-  char altCity2Label[ALT_CITY_LABEL_LEN];
-  int16_t altCity2UtcOffset;
-  int16_t localUtcOffset;
-  bool usePrimaryFontForAllWidgets;
-  char infoLayout[INFO_LAYOUT_LEN];
-  uint8_t timeFormat;  // TimeFormatType
-} StoredSettingsExtra;
-
-typedef char StoredSettings_must_fit_in_persist_data
-    [(sizeof(StoredSettings) <= PERSIST_DATA_MAX_LENGTH) ? 1 : -1];
-typedef char StoredSettingsExtra_must_fit_in_persist_data
-    [(sizeof(StoredSettingsExtra) <= PERSIST_DATA_MAX_LENGTH) ? 1 : -1];
 
 extern Settings globalSettings;
 
