@@ -6,7 +6,6 @@
 #include "info_layout.h"
 #include "messaging.h"
 #include "settings.h"
-#include "solarUtils.h"
 #include "utils.h"
 
 // Long enough for "12:30 PM" plus the null terminator.
@@ -89,19 +88,11 @@ static void update_clock() {
   ColorTheme currentTheme = getCurrentColorTheme();
   window_set_background_color(mainWindow, currentTheme.bgColor);
 
-  // if sunrise/sunset has not yet been calculated, do that (feeds the night
-  // theme and the {sunrise}/{sunset}/{next_solar} widget tokens)
-  if (currentSolarInfo.sunriseMinute == DEFAULT_SUNRISE_TIME &&
-      currentSolarInfo.sunsetMinute == DEFAULT_SUNSET_TIME) {
-    solarUtils_recalculateSolarData();
-  }
-
   layer_mark_dirty(centerLayer);
 }
 
 // settings might have changed, so recalculate solar data and refresh screen
 void onSettingsChanged() {
-  solarUtils_recalculateSolarData();
   update_clock();
 }
 
@@ -205,9 +196,6 @@ static void init() {
 
   // load those settings
   Settings_init();
-
-  // init solar stuff (sunrise/sunset + night theme)
-  solarUtils_init();
 
   // init the messaging thing
   messaging_init(onSettingsChanged, on_request_failed);

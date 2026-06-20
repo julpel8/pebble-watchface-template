@@ -1,5 +1,4 @@
 #include "settings.h"
-#include "solarUtils.h"
 #include "utils.h"
 #include "widgets.h"
 #include <pebble.h>
@@ -9,18 +8,13 @@ Settings globalSettings;
 // ---------------------------------------------------------------------------
 // Per-field persist keys. Each setting owns its own key, so adding or removing
 // a field never disturbs the others. Numbered from 100 to stay clear of the
-// solar data key (51).
+// solar key (51).
 // ---------------------------------------------------------------------------
 enum {
   PK_TIME_COLOR = 100,
   PK_SUBTEXT_PRIMARY_COLOR,
   PK_SUBTEXT_SECONDARY_COLOR,
   PK_BG_COLOR,
-  PK_NIGHT_TIME_COLOR,
-  PK_NIGHT_SUBTEXT_PRIMARY_COLOR,
-  PK_NIGHT_SUBTEXT_SECONDARY_COLOR,
-  PK_NIGHT_BG_COLOR,
-  PK_USE_NIGHT_THEME,
   PK_USE_LARGE_FONTS,
   PK_SHOW_LEADING_ZERO,
   PK_USE_PRIMARY_FONT,
@@ -80,13 +74,6 @@ static void set_defaults(void) {
   globalSettings.subtextSecondaryColor = DEFAULT_SUBTEXT_SECONDARY_COLOR;
   globalSettings.bgColor = DEFAULT_BG_COLOR;
 
-  globalSettings.nightTimeColor = DEFAULT_NIGHT_TIME_COLOR;
-  globalSettings.nightSubtextPrimaryColor = DEFAULT_NIGHT_SUBTEXT_PRIMARY_COLOR;
-  globalSettings.nightSubtextSecondaryColor =
-      DEFAULT_NIGHT_SUBTEXT_SECONDARY_COLOR;
-  globalSettings.nightBgColor = DEFAULT_NIGHT_BG_COLOR;
-
-  globalSettings.useNightTheme = true;
   globalSettings.useLargeFonts = false;
   globalSettings.showLeadingZero = false;
   globalSettings.usePrimaryFontForAllWidgets = false;
@@ -126,17 +113,6 @@ static void load_from_keys(void) {
       PK_SUBTEXT_SECONDARY_COLOR, globalSettings.subtextSecondaryColor);
   globalSettings.bgColor = persist_get_color(PK_BG_COLOR, globalSettings.bgColor);
 
-  globalSettings.nightTimeColor =
-      persist_get_color(PK_NIGHT_TIME_COLOR, globalSettings.nightTimeColor);
-  globalSettings.nightSubtextPrimaryColor = persist_get_color(
-      PK_NIGHT_SUBTEXT_PRIMARY_COLOR, globalSettings.nightSubtextPrimaryColor);
-  globalSettings.nightSubtextSecondaryColor = persist_get_color(
-      PK_NIGHT_SUBTEXT_SECONDARY_COLOR, globalSettings.nightSubtextSecondaryColor);
-  globalSettings.nightBgColor =
-      persist_get_color(PK_NIGHT_BG_COLOR, globalSettings.nightBgColor);
-
-  globalSettings.useNightTheme =
-      persist_get_bool(PK_USE_NIGHT_THEME, globalSettings.useNightTheme);
   globalSettings.useLargeFonts =
       persist_get_bool(PK_USE_LARGE_FONTS, globalSettings.useLargeFonts);
   globalSettings.showLeadingZero =
@@ -196,14 +172,7 @@ void Settings_saveToStorage() {
   persist_put_color(PK_SUBTEXT_SECONDARY_COLOR,
                     globalSettings.subtextSecondaryColor);
   persist_put_color(PK_BG_COLOR, globalSettings.bgColor);
-  persist_put_color(PK_NIGHT_TIME_COLOR, globalSettings.nightTimeColor);
-  persist_put_color(PK_NIGHT_SUBTEXT_PRIMARY_COLOR,
-                    globalSettings.nightSubtextPrimaryColor);
-  persist_put_color(PK_NIGHT_SUBTEXT_SECONDARY_COLOR,
-                    globalSettings.nightSubtextSecondaryColor);
-  persist_put_color(PK_NIGHT_BG_COLOR, globalSettings.nightBgColor);
 
-  persist_write_bool(PK_USE_NIGHT_THEME, globalSettings.useNightTheme);
   persist_write_bool(PK_USE_LARGE_FONTS, globalSettings.useLargeFonts);
   persist_write_bool(PK_SHOW_LEADING_ZERO, globalSettings.showLeadingZero);
   persist_write_bool(PK_USE_PRIMARY_FONT,
@@ -274,23 +243,9 @@ bool settings_show_am_pm(void) {
 
 ColorTheme getCurrentColorTheme() {
   ColorTheme theme;
-
-  struct tm *timeInfo = getCurrentTime();
-  int currentMinutes = timeInfo->tm_hour * 60 + timeInfo->tm_min;
-
-  bool useNight = globalSettings.useNightTheme && isNightTime(currentMinutes);
-
-  if (useNight) {
-    theme.timeColor = globalSettings.nightTimeColor;
-    theme.subtextPrimaryColor = globalSettings.nightSubtextPrimaryColor;
-    theme.subtextSecondaryColor = globalSettings.nightSubtextSecondaryColor;
-    theme.bgColor = globalSettings.nightBgColor;
-  } else {
-    theme.timeColor = globalSettings.timeColor;
-    theme.subtextPrimaryColor = globalSettings.subtextPrimaryColor;
-    theme.subtextSecondaryColor = globalSettings.subtextSecondaryColor;
-    theme.bgColor = globalSettings.bgColor;
-  }
-
+  theme.timeColor = globalSettings.timeColor;
+  theme.subtextPrimaryColor = globalSettings.subtextPrimaryColor;
+  theme.subtextSecondaryColor = globalSettings.subtextSecondaryColor;
+  theme.bgColor = globalSettings.bgColor;
   return theme;
 }
